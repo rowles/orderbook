@@ -1,20 +1,35 @@
 using price_type = std::uint64_t;
+using quantity_type = std::uint64_t;
+
+enum message_type {
+  trade, quote, cancel, info
+};
+
+enum side_type {
+  buy, sell
+};
 
 struct {
-  std::uint64_t seq_num;
+  std::uint64_t seq_num{0};
 
-  std::int messageType; // Trade, Quote, Cancel, Info
-  std::int timestamp;
+  message_type messageType{info}; // Trade, Quote, Cancel, Info
+  std::uint64_t timestamp{0};
 
-  price_type price;
-  std::uint64_t quantity;
-  side;
+//  char[20] symbol;
+//  char[20] exchange;
+
+  price_type price{0};
+  quantity_type quantity{0};
+  side_type side{};
 } tick;
 
 
 class tickstream {
 public:
 	
+	void has_next();
+	void has_prev();
+
 	void next();
 	void next_trade();
 	void next_quote();
