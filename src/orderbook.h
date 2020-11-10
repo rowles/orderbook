@@ -39,14 +39,15 @@ class orderbook {
 public:
   void add_tick(const tick &t) {
     if (t.side == buy) {
-
+      /*
       if (t.price > best_bid) best_bid = t.price;
       if (bid_book.count(t.price) == 0) {
         // new price level
         bid_book[t.price] = {{{t.seq_num, t.quantity}}};
       } else {
         bid_book[t.price].orders.push_back({t.seq_num, t.quantity});
-      }
+      }*/
+      do_buy(t);
     } else if (t.side == sell) {
 
       if (t.price < best_offer) best_offer = t.price;
@@ -79,10 +80,59 @@ public:
     return ss.str();
   }
 
+  void do_buy(const tick &t) {
+    if (t.price <= best_offer) {
+      // crosses spread
+      
+      quantity_type rem = t.quantity;
+
+      for (auto& [pl, orders] : ask_book) {
+        auto it = orders.orders.begin();
+
+        while (it != orders.orders.end() && rem > 0) {
+          int64_t tmp = rem - it->quantity;
+          std::cout << "rem " << rem << "\n";
+          std::cout << "tmp " << tmp << "\n";
+          if (tmp >= 0) {
+            std::cout << "filling all order " << it->quantity << '\n';
+            // filled order on book!
+            it = orders.orders.erase(it);
+            rem = tmp;
+          } else {
+            std::cout << "filling some order " << it->quantity << " to " << tmp << '\n';
+            it->quantity = std::abs(tmp);
+            rem = std::min<quantity_type>(tmp, 0);
+          }
+          // to_fill = max(it->quantity - rem, )
+        }
+
+        // if orders.size() == 0 { remove pl }
+      }
+
+      return;
+
+    }
+
+    if (t.price > best_bid) best_bid = t.price;
+    if (bid_book.count(t.price) == 0) {
+      // new price level
+      bid_book[t.price] = {{{t.seq_num, t.quantity}}};
+    } else {
+      bid_book[t.price].orders.push_back({t.seq_num, t.quantity});
+    }
+
+  }
   // std::string to_json(resolution)
   // top of book
   // n price levels
   // full depth of book
+  //
+  std::map<price_type, price_level>::const_iterator asks_iter() const {
+    return ask_book.cbegin();
+  }
+  std::map<price_type, price_level>::const_iterator bids_iter() const {
+    return bid_book.cbegin();
+  }
 
 private:
   std::map<price_type, price_level> ask_book{};
