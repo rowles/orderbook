@@ -1,31 +1,15 @@
+#include <limits.h>
+#include "gtest/gtest.h"
 #include "orderbook.h"
 #include "tick.h"
-#include <iostream>
 
-int main() {
-  agr::tick t0{.seq_num = 1,
-               .message = agr::message_type::quote,
-               .price = 101,
-               .quantity = 10,
-               .side = agr::side_type::sell};
-
-
-  agr::tick t1{.seq_num = 2,
-               .message = agr::message_type::quote,
-               .price = 99,
-               .quantity = 10,
-               .side = agr::side_type::buy};
-
-
-  std::cout << t0.to_string();
-  std::cout << t1.to_string();
-
-  agr::orderbook ob{};
-  std::cout << ob.to_string();
-  
 #define Q agr::message_type::quote
 #define B agr::side_type::buy
 #define S agr::side_type::sell
+
+TEST(orderbook, test0) {
+  agr::orderbook ob{};
+
   agr::tick s0{.message = Q, .price = 102, .quantity = 100, .side=S};
   agr::tick s1{.message = Q, .price = 101, .quantity = 50, .side=S};
   agr::tick s2{.message = Q, .price = 100, .quantity = 1, .side=S};
@@ -44,5 +28,7 @@ int main() {
   ob.add_tick(b1);
   ob.add_tick(b2);
   ob.add_tick(b3);
-  std::cout << ob.to_string();
+
+  EXPECT_EQ(ob.to_string(), "");
 }
+

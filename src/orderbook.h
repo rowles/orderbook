@@ -2,17 +2,37 @@
 #include "tick.h"
 
 #include <map>
+#include <sstream>
 #include <vector>
+#include <functional>
 
 namespace agr {
 
 struct order {
   std::uint64_t seq_num;
   std::uint64_t quantity;
+  
+  std::string to_string() const {
+    std::stringstream ss{};
+
+    ss << "[seq:" << seq_num << ", quantity:" << quantity << "]"; 
+
+    return ss.str();
+  }
 };
 
 struct price_level {
   std::vector<order> orders;
+
+  std::string to_string() const {
+    std::stringstream ss{};
+
+    for (const auto& o : orders) {
+      ss << o.to_string() << ", ";
+    }
+
+    return ss.str();
+  }
 };
 
 class orderbook {
@@ -45,7 +65,17 @@ public:
   std::string to_string() const noexcept {
     std::stringstream ss{};
     ss << "bb:" << best_bid << " bo:" << best_offer << '\n'; 
-    ss << "price levels bid:" << bid_book.size() << " ask:" << ask_book.size() << '\n'; 
+    ss << "price levels bid:" << bid_book.size() << " ask:" << ask_book.size() << '\n';
+
+    ss << "Ask Book\n";
+    for (const auto& [price, orders] : ask_book) {
+      ss << price << " -> " << orders.to_string() << "\n";
+    }
+    ss << "Bid Book\n";
+    for (const auto& [price, orders] : bid_book) {
+      ss << price << " -> " << orders.to_string() << "\n";
+    }
+
     return ss.str();
   }
 
@@ -56,7 +86,7 @@ public:
 
 private:
   std::map<price_type, price_level> ask_book{};
-  std::map<price_type, price_level> bid_book{};
+  std::map<price_type, price_level, std::greater<price_type>> bid_book{};
 
   price_type best_bid{std::numeric_limits<std::uint64_t>::min()};
   price_type best_offer{std::numeric_limits<std::uint64_t>::max()};
