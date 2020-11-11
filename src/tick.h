@@ -12,6 +12,8 @@ enum message_type { trade, quote, cancel, info };
 
 enum side_type { buy, sell };
 
+
+// bitmask side & info
 struct tick {
   std::uint64_t seq_num{0};
 

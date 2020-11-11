@@ -41,21 +41,56 @@ TEST(orderbook, partial_book_fill) {
   ob.add_tick(t0);
 
   std::cout << ob.to_string() << '\n';
-  const auto ait = ob.asks_iter();
+  auto ait = ob.asks_iter();
   
   EXPECT_EQ(ait->first, 100);
 
   EXPECT_EQ(ait->second.orders.size(), 2);
   EXPECT_EQ(ait->second.orders.at(0).seq_num,  3);
-  EXPECT_EQ(ait->second.orders.at(0).quantity, 2);
+  EXPECT_EQ(ait->second.orders.at(0).quantity, 2); // 3 -> 2
   EXPECT_EQ(ait->second.orders.at(1).seq_num,  4);
   EXPECT_EQ(ait->second.orders.at(1).quantity, 1);
   
   //////
   // submitted order get filled
-  // order on book gets partial
-  agr::tick t1{.message = Q, .price = 100, .quantity = 1, .side=B};
+  // order on book gets filled
+  agr::tick t1{.message = Q, .price = 100, .quantity = 2, .side=B};
 
-  ob.add_tick(t0);
+  ob.add_tick(t1);
+  ait = ob.asks_iter();
+
+  EXPECT_EQ(ait->first, 100);
+  EXPECT_EQ(ait->second.orders.size(), 1);
+  EXPECT_EQ(ait->second.orders.at(0).seq_num,  4);
+  EXPECT_EQ(ait->second.orders.at(0).quantity, 1);
+
+  //////
+  // submitted order get filled
+  // price level filled
+  agr::tick t2{.message = Q, .price = 100, .quantity = 1, .side=B};
+
+  ob.add_tick(t2);
+  ait = ob.asks_iter();
+  std::cout << ob.to_string() << '\n';
+
+  EXPECT_EQ(ait->first, 101);
+  EXPECT_EQ(ait->second.orders.size(), 1);
+  EXPECT_EQ(ait->second.orders.at(0).seq_num,  2);
+  EXPECT_EQ(ait->second.orders.at(0).quantity, 50);
+
+  //////
+  // submitted order get filled
+  // whole book side filled
+  agr::tick t3{.message = Q, .price = 100, .quantity = 150, .side=B};
+
+  ob.add_tick(t3);
+  ait = ob.asks_iter();
+  std::cout << ob.to_string() << '\n';
+
+  EXPECT_EQ(ait->first, 101);
+  EXPECT_EQ(ait->second.orders.size(), 1);
+  EXPECT_EQ(ait->second.orders.at(0).seq_num,  2);
+  EXPECT_EQ(ait->second.orders.at(0).quantity, 50);
+
 }
 

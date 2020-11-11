@@ -6,6 +6,8 @@
 #include <vector>
 #include <functional>
 
+
+// order pool
 namespace agr {
 
 struct order {
@@ -80,23 +82,43 @@ public:
     return ss.str();
   }
 
+  template<typename S>
+  quantity_type do_fill(const tick &t) {
+    quantity_type rem = t.quantity;
+
+    S* side_book;
+
+    if (t.side == buy) {
+      side_book = &ask_book;
+    } else {
+      side_book = &bid_book;
+    }
+
+
+
+    return 0;
+  }
+
   void do_buy(const tick &t) {
     if (t.price <= best_offer) {
       // crosses spread
-      
+  
       quantity_type rem = t.quantity;
 
-      for (auto& [pl, orders] : ask_book) {
-        auto it = orders.orders.begin();
+      auto pl_it = ask_book.begin();
 
-        while (it != orders.orders.end() && rem > 0) {
+      while (pl_it != ask_book.end() && rem > 0) {
+      //for (auto& [pl, orders] : ask_book) {
+        auto it = pl_it->second.orders.begin();
+
+        while (it != pl_it->second.orders.end() && rem > 0) {
           int64_t tmp = rem - it->quantity;
           std::cout << "rem " << rem << "\n";
           std::cout << "tmp " << tmp << "\n";
           if (tmp >= 0) {
             std::cout << "filling all order " << it->quantity << '\n';
             // filled order on book!
-            it = orders.orders.erase(it);
+            it = pl_it->second.orders.erase(it);
             rem = tmp;
           } else {
             std::cout << "filling some order " << it->quantity << " to " << tmp << '\n';
@@ -106,7 +128,9 @@ public:
           // to_fill = max(it->quantity - rem, )
         }
 
-        // if orders.size() == 0 { remove pl }
+        if (pl_it->second.orders.size() == 0) {
+          pl_it = ask_book.erase(pl_it);
+        }
       }
 
       return;
