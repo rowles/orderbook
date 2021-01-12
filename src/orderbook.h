@@ -12,6 +12,7 @@ namespace agr {
 
 struct order {
   std::uint64_t seq_num;
+  // char[20] order_id;
   std::uint64_t quantity;
   
   std::string to_string() const {
@@ -36,6 +37,8 @@ struct price_level {
     return ss.str();
   }
 };
+
+// TODO: cancel, modify, market
 
 class orderbook {
 public:
@@ -83,7 +86,7 @@ public:
   }
 
   template<typename S>
-  quantity_type do_fill(const tick &t) {
+  quantity_type execute(const tick &t) {
     quantity_type rem = t.quantity;
 
     S* side_book;
@@ -96,7 +99,7 @@ public:
 
 
 
-    return 0;
+    return rem;
   }
 
   void do_buy(const tick &t) {

@@ -16,12 +16,14 @@ enum side_type { buy, sell };
 // bitmask side & info
 struct tick {
   std::uint64_t seq_num{0};
+  // order id
 
   message_type message{info};
   std::uint64_t timestamp{0};
 
   //  char[20] symbol;
   //  char[20] exchange;
+  //  char[64] order_id;
 
   price_type price{0};
   quantity_type quantity{0};
