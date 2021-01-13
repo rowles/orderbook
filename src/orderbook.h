@@ -225,36 +225,11 @@ public:
   void do_buy(const tick& t) {
     quantity_type remainder = t.quantity;
 
-    bool cross_spread = t.price <= best_offer;
+    bool cross_spread = t.price >= best_offer;
     std::cout << t.price << " buy " << best_offer << " crossed " << cross_spread << '\n';
     if (cross_spread) {
-      auto price_level_iter = ask_levels.begin();
-
-      // iterate price levels
-      while (price_level_iter != ask_levels.end() && remainder > 0) {
-        auto order_iter = price_level_iter->orders.begin();
-
-        // iterate orders resting at price
-        while (order_iter != price_level_iter->orders.end() && remainder > 0) {
-          int64_t tmp = remainder - order_iter->quantity;
-
-
-          std::cout << "rem " << remainder << "\n";
-          std::cout << "tmp " << tmp << "\n";
-
-          if (tmp >= 0) {
-            //std::cout << "filling all order " << it->quantity << '\n';
-            // filled order on book!
-            order_iter = price_level_iter->orders.erase(order_iter);
-            remainder = tmp;
-            // TODO: delete from meta
-          } else {
-            //std::cout << "filling some order " << it->quantity << " to " << tmp << '\n';
-            order_iter->quantity = std::abs(tmp);
-            remainder = std::min<quantity_type>(tmp, 0);
-          }
-        }
-      }
+      std::cout << "crossing spread\n";
+      do_cross_spread(&ask_levels, remainder);
     }
 
     if (remainder == 0) return;
@@ -272,19 +247,21 @@ public:
           return a.price > b.price;
         });
 
+    const auto o = order{.seq_num=t.seq_num, .quantity=t.quantity};
+
     if (it == bid_levels.end() || it->price != t.price) {
       std::cout << "adding new!\n";
       // add new
-      pl.orders = { order{.seq_num=1, .quantity=t.quantity} };
+      pl.orders = { o };
       bid_levels.insert(it, pl);
     } else if (it->price == t.price) {
       std::cout << "adding existing!\n";
       // add to existing level
-      it->orders.push_back(order{.seq_num=1, .quantity=t.quantity});
+      it->orders.push_back(o);
     }
   }
 
-  void do_cross_spread(std::vector<price_level>* levels, quantity_type remainder) {
+  void do_cross_spread(std::vector<price_level>* levels, quantity_type& remainder) {
     auto price_level_iter = levels->begin();
 
     while (price_level_iter != levels->end() && remainder > 0) {
@@ -297,17 +274,25 @@ public:
         std::cout << "tmp " << tmp << "\n";
 
         if (tmp >= 0) {
-          //std::cout << "filling all order " << it->quantity << '\n';
+          std::cout << "filling all order " << order_iter->quantity << '\n';
           // filled order on book!
           order_iter = price_level_iter->orders.erase(order_iter);
           remainder = tmp;
+          
           // TODO: delete from meta
+          if (price_level_iter->orders.size() == 0) {
+            std::cout << "!! removing price level\n";
+            price_level_iter = levels->erase(price_level_iter);
+            break;
+          }
         } else {
-          //std::cout << "filling some order " << it->quantity << " to " << tmp << '\n';
+          std::cout << "filling some order " << order_iter->quantity << " to " << tmp << '\n';
           order_iter->quantity = std::abs(tmp);
           remainder = std::min<quantity_type>(tmp, 0);
         }
       }
+
+      //++price_level_iter;
 
     }
 
@@ -322,36 +307,6 @@ public:
     if (cross_spread) {
       std::cout << "crossing spread\n";
       do_cross_spread(&bid_levels, remainder);
-      /*
-      std::cout << "crossing spread\n";
-      auto price_level_iter = ask_levels.begin();
-
-      // iterate price levels
-      while (price_level_iter != ask_levels.end()
-          && remainder > 0) {
-        auto order_iter = price_level_iter->orders.begin();
-
-        // iterate orders resting at price
-        while (order_iter != price_level_iter->orders.end() && remainder > 0) {
-          int64_t tmp = remainder - order_iter->quantity;
-
-
-          std::cout << "rem " << remainder << "\n";
-          std::cout << "tmp " << tmp << "\n";
-
-          if (tmp >= 0) {
-            //std::cout << "filling all order " << it->quantity << '\n';
-            // filled order on book!
-            order_iter = price_level_iter->orders.erase(order_iter);
-            remainder = tmp;
-            // TODO: delete from meta
-          } else {
-            //std::cout << "filling some order " << it->quantity << " to " << tmp << '\n';
-            order_iter->quantity = std::abs(tmp);
-            remainder = std::min<quantity_type>(tmp, 0);
-          }
-        }
-      }*/
     }
 
     if (remainder == 0) return;
@@ -369,15 +324,17 @@ public:
           return a.price < b.price;
         });
 
+    const auto o = order{.seq_num=t.seq_num, .quantity=t.quantity};
+    
     if (it == ask_levels.end() || it->price != t.price) {
       std::cout << "adding new!\n";
       // add new
-      pl.orders = { order{.seq_num=1, .quantity=t.quantity} };
+      pl.orders = { o };
       ask_levels.insert(it, pl);
     } else if (it->price == t.price) {
       std::cout << "adding existing!\n";
       // add to existing level
-      it->orders.push_back(order{.seq_num=1, .quantity=t.quantity});
+      it->orders.push_back(o);
     }
   }
 

@@ -18,10 +18,10 @@ TEST(orderbook, partial_book_fill) {
   agr::tick s2{.seq_num = 3, .message = Q, .price = 100, .quantity = 3,   .side=S};
   agr::tick s3{.seq_num = 4, .message = Q, .price = 100, .quantity = 1,   .side=S};
 
-  agr::tick b0{.seq_num = 5, .message = Q, .price = 999, .quantity = 1,   .side=B};
-  agr::tick b1{.seq_num = 6, .message = Q, .price = 998, .quantity = 5,   .side=B};
-  agr::tick b2{.seq_num = 7, .message = Q, .price = 997, .quantity = 2,   .side=B};
-  agr::tick b3{.seq_num = 8, .message = Q, .price = 997, .quantity = 10,  .side=B};
+  agr::tick b0{.seq_num = 5, .message = Q, .price =  99, .quantity = 1,   .side=B};
+  agr::tick b1{.seq_num = 6, .message = Q, .price =  98, .quantity = 5,   .side=B};
+  agr::tick b2{.seq_num = 7, .message = Q, .price =  97, .quantity = 2,   .side=B};
+  agr::tick b3{.seq_num = 8, .message = Q, .price =  97, .quantity = 10,  .side=B};
 
   ob.add_tick(s0);
   ob.add_tick(s1);
@@ -46,27 +46,26 @@ TEST(orderbook, partial_book_fill) {
   std::cout << ob.to_string() << '\n';
   auto it = ob.asks_begin();
   
+  // check best asks
   EXPECT_EQ(it->price, 100);
-/*
-  EXPECT_EQ(ait->second.orders.size(), 2);
-  EXPECT_EQ(ait->second.orders.at(0).seq_num,  3);
-  EXPECT_EQ(ait->second.orders.at(0).quantity, 2); // 3 -> 2
-  EXPECT_EQ(ait->second.orders.at(1).seq_num,  4);
-  EXPECT_EQ(ait->second.orders.at(1).quantity, 1);
-  */
-  /*
+  EXPECT_EQ(it->orders.size(), 2);
+  EXPECT_EQ(it->orders[0].seq_num, 3);
+  EXPECT_EQ(it->orders[0].quantity, 2); // 3 -> 2
+  EXPECT_EQ(it->orders[1].seq_num, 4);  // same
+  EXPECT_EQ(it->orders[1].quantity, 1);
+
   //////
   // submitted order get filled
   // order on book gets filled
   agr::tick t1{.seq_num=10, .message = Q, .price = 100, .quantity = 2, .side=B};
 
   ob.add_tick(t1);
-  ait = ob.asks_iter();
+  it = ob.asks_begin();
 
-  EXPECT_EQ(ait->first, 100);
-  EXPECT_EQ(ait->second.orders.size(), 1);
-  EXPECT_EQ(ait->second.orders.at(0).seq_num,  4);
-  EXPECT_EQ(ait->second.orders.at(0).quantity, 1);
+  EXPECT_EQ(it->price, 100);
+  EXPECT_EQ(it->orders.size(), 1); // pop old head
+  EXPECT_EQ(it->orders[0].seq_num, 4);
+  EXPECT_EQ(it->orders[0].quantity, 1);
 
   //////
   // submitted order get filled
@@ -74,13 +73,15 @@ TEST(orderbook, partial_book_fill) {
   agr::tick t2{.seq_num=11, .message = Q, .price = 100, .quantity = 1, .side=B};
 
   ob.add_tick(t2);
-  ait = ob.asks_iter();
+  it = ob.asks_begin();
   std::cout << ob.to_string() << '\n';
 
-  EXPECT_EQ(ait->first, 101);
-  EXPECT_EQ(ait->second.orders.size(), 1);
-  EXPECT_EQ(ait->second.orders.at(0).seq_num,  2);
-  EXPECT_EQ(ait->second.orders.at(0).quantity, 50);
+  // new best offer
+  EXPECT_EQ(it->price, 101);
+  EXPECT_EQ(it->orders.size(), 1); // pop old head
+  EXPECT_EQ(it->orders[0].seq_num, 2);
+  EXPECT_EQ(it->orders[0].quantity, 50);
+
 
   //////
   // submitted order get filled
@@ -88,15 +89,9 @@ TEST(orderbook, partial_book_fill) {
   agr::tick t3{.seq_num=12, .message = Q, .price = 100, .quantity = 150, .side=B};
 
   ob.add_tick(t3);
-  ait = ob.asks_iter();
+  it = ob.asks_begin();
   std::cout << ob.to_string() << '\n';
   
-  auto price = ait->first;
-  auto orders = ait->second;
-  EXPECT_EQ(ait, ob.asks_end());
-  EXPECT_EQ(ait->second.orders.size(), 1);
-  EXPECT_EQ(ait->second.orders.at(0).seq_num,  2);
-  EXPECT_EQ(ait->second.orders.at(0).quantity, 50);
-  */
+  EXPECT_EQ(it, ob.asks_end());
 }
 
