@@ -55,45 +55,43 @@ TEST(orderbook, partial_book_fill) {
   EXPECT_EQ(it->orders[1].order_id, 4);  // same
   EXPECT_EQ(it->orders[1].quantity, 1);
 
-  /*
   //////
   // submitted order get filled
   // order on book gets filled
-  agr::tick t1{.seq_num=10, .message = Q, .price = 100, .quantity = 2, .side=B};
+  agr::Order t1{.oid=10, .price = 100, .quantity = 2, .side=B, .type=L};
 
-  ob.add_tick(t1);
+  ob.submit_order(t1);
   it = ob.asks_begin();
 
   EXPECT_EQ(it->price, 100);
   EXPECT_EQ(it->orders.size(), 1); // pop old head
-  EXPECT_EQ(it->orders[0].seq_num, 4);
+  EXPECT_EQ(it->orders[0].order_id, 4);
   EXPECT_EQ(it->orders[0].quantity, 1);
 
   //////
   // submitted order get filled
   // price level filled
-  agr::tick t2{.seq_num=11, .message = Q, .price = 100, .quantity = 1, .side=B};
+  agr::Order t2{.oid=11, .price = 100, .quantity = 1, .side=B, .type=L};
 
-  ob.add_tick(t2);
+  ob.submit_order(t2);
   it = ob.asks_begin();
   std::cout << ob.to_string() << '\n';
 
   // new best offer
   EXPECT_EQ(it->price, 101);
   EXPECT_EQ(it->orders.size(), 1); // pop old head
-  EXPECT_EQ(it->orders[0].seq_num, 2);
+  EXPECT_EQ(it->orders[0].order_id, 2);
   EXPECT_EQ(it->orders[0].quantity, 50);
-
 
   //////
   // submitted order get filled
   // whole book side filled
-  agr::tick t3{.seq_num=12, .message = Q, .price = 100, .quantity = 150, .side=B};
+  agr::Order t3{.oid=12, .price = 100, .quantity = 150, .side=B, .type=M};
 
-  ob.add_tick(t3);
+  ob.submit_order(t3);
   it = ob.asks_begin();
   std::cout << ob.to_string() << '\n';
   
-  EXPECT_EQ(it, ob.asks_end());*/
+  EXPECT_EQ(it, ob.asks_end());
 }
 
