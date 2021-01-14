@@ -40,19 +40,36 @@ struct PriceLevel {
 
     return ss.str();
   }
+
+  //inline bool operator< (const PriceLevel& lhs, const PriceLevel& rhs){ return lhs.price < rhs.price; }
+  /*inline bool operator> (const PriceLevel& lhs, const PriceLevel& rhs){ return cmp(lhs,rhs) >  0; }
+  bool Foo::operator==(const Foo& other) {
+  return bar == other.bar;
+}
+
+// Implementation 1
+bool Foo::operator!=(const Foo& other) {
+  return bar != other.bar
+}
+
+// Implementation 2
+bool Foo::operator!=(const Foo& other) {
+  return !(*this == other);
+}*/
 };
 
+  inline bool operator< (const PriceLevel& lhs, const PriceLevel& rhs){ return lhs.price < rhs.price; }
 // TODO: cancel, modify, market
-
-struct OrderEntry {
-  // ptr to price
-  price_t price;
-  // side book_size;
-};
 
 enum class Side {
   Buy,
   Sell
+};
+
+enum class OrderType {
+  Market,
+  Limit,  // GTC
+  IOC
 };
 
 struct Order {
@@ -60,39 +77,38 @@ struct Order {
   price_t price;
   quantity_t quantity;
   Side side;
+  OrderType type;
 };
 
+struct OrderEntry {
+  // ptr to price
+  price_t price;
+  Side book_size;
+};
+
+//
+// Supports:
+//  - limit
+//  - market
+//  - ioc
+//
+// Todo:
+//  - cancel
 class vec_orderbook {
 public:
-  using OrderID = int;
   using Book = std::vector<PriceLevel>;
   using const_iterator = Book::const_iterator;
 
-  void market_order(const Order& o) {
-
-  }
-
   void submit_order(const Order& o) {
-    if (o.side == Side::Buy) {
-      do_buy(o);
+    /*if (o.side == Side::Buy) {
+      handle_buy_order(o);
     } else if (o.side == Side::Sell) {
-    }
+      handle_sell_order(o);
+    }*/
+    handle_order(o);
   }
 
   void cancel_order(const orderid_t& oid) {
-  }
-
-  /*
-  void add_tick(const tick& t) {
-    if (t.side == buy) {
-      do_buy(t);
-    } else {
-      do_sell(t);
-    }
-  }*/
-
-  void remove_order(orderid_t& oid) {
-    
   }
 
   const_iterator bids_begin() {
@@ -137,15 +153,17 @@ private:
 
   // add order to the book
   template <typename C>
-  void rest_on_book(Book* levels, const Order& o, quantity_t& remainder, C comp) {
+  void rest_on_book(const Order& o, quantity_t& remainder, C comp) {
+    auto levels = o.side == Side::Buy ? &bid_levels : &ask_levels;
     std::cout << "resting\n";
     PriceLevel pl{.price=o.price};
     auto entry = OrderEntry {
       .price = remainder
     };
 
-    ///order_map[oid] = entry;
+    order_map[o.oid] = entry;
  
+    //auto ff = (o.side == Side::Buy) ? std::less<price_t>() : std::greater<price_t>();
     auto it = std::lower_bound(levels->begin(), levels->end(), pl, comp);
 
     const auto bo = BookOrder{.order_id=o.oid, .quantity=o.quantity};
@@ -154,61 +172,46 @@ private:
       // adding a new price level
       std::cout << "new price level\n";
       pl.orders = { bo };
-      bid_levels.insert(it, pl);
+      levels->insert(it, pl);
     } else if (it->price == o.price) {
       std::cout << "existing price level\n";
       // add order to existing price level
       it->orders.push_back(bo);
     }
+      std::cout << "rested\n";
   }
 
-  void do_buy(const Order& o) {
+  quantity_t handle_order(const Order& o) {
     auto remainder = o.quantity;
 
-    bool cross_spread = o.price >= best_offer;
+    bool cross_spread = o.type == OrderType::Market ||
+      (o.side == Side::Sell && o.price <= best_bid)
+      || (o.side == Side::Buy && o.price >= best_offer);
     ///std::cout << t.price << " buy " << best_offer << " crossed " << cross_spread << '\n';
     if (cross_spread) {
       std::cout << "crossing spread\n";
-      do_cross_spread(&ask_levels, remainder);
+      do_cross_spread(o.side, remainder);
     }
 
-    if (remainder == 0) return;
-    if (o.price > best_bid) best_bid = o.price;
+    bool is_resting_eligible = (remainder > 0 && o.type == OrderType::Limit);
+    if (!is_resting_eligible) return remainder;
+    if (o.side == Side::Sell && o.price < best_offer) best_offer = o.price;
+    else if (o.side == Side::Buy && o.price > best_bid) best_bid = o.price;
 
     // check resting eligiblity
-    rest_on_book(&bid_levels, o, remainder, [](auto& a, auto& b) {
+    if (o.side == Side::Sell)
+      rest_on_book(o, remainder, [](auto& a, auto& b) {
+        return a.price < b.price;
+        });
+    else
+      rest_on_book(o, remainder, [](auto& a, auto& b) {
         return a.price > b.price;
         });
-    /*
-    // order will rest on book
-    PriceLevel pl{.price=o.price};
-    auto entry = OrderEntry {
-      .price = remainder
-    };
-
-    ///order_map[oid] = entry;
- 
-    auto it = std::lower_bound(bid_levels.begin(), bid_levels.end(), pl,
-        [](auto& a, auto& b) {
-          return a.price > b.price;
-        });
-
-    const auto bo = BookOrder{.order_id=o.oid, .quantity=o.quantity};
-
-    if (it == bid_levels.end() || it->price != o.price) {
-      //std::cout << "adding new!\n";
-      // add new
-      pl.orders = { bo };
-      bid_levels.insert(it, pl);
-    } else if (it->price == o.price) {
-      //std::cout << "adding existing!\n";
-      // add to existing level
-      it->orders.push_back(bo);
-    }*/
   }
 
   // cross the spread for a side
-  void do_cross_spread(std::vector<PriceLevel>* levels, quantity_t& remainder) {
+  void do_cross_spread(Side side, quantity_t& remainder) {
+    auto levels = side == Side::Buy ? &ask_levels : &bid_levels;
     auto price_level_iter = levels->begin();
 
     while (price_level_iter != levels->end() && remainder > 0) {
@@ -217,23 +220,27 @@ private:
       while (order_iter != price_level_iter->orders.end() && remainder > 0) {
         int64_t tmp = remainder - order_iter->quantity;
 
-        std::cout << "rem " << remainder << "\n";
-        std::cout << "tmp " << tmp << "\n";
+        //std::cout << "rem " << remainder << "\n";
+        //std::cout << "tmp " << tmp << "\n";
 
         if (tmp >= 0) {
-          std::cout << "filling all order " << order_iter->quantity << '\n';
+          //std::cout << "filling all order " << order_iter->quantity << '\n';
           // filled order on book!
           order_iter = price_level_iter->orders.erase(order_iter);
           remainder = tmp;
           
           // TODO: delete from meta
           if (price_level_iter->orders.size() == 0) {
-            std::cout << "!! removing price level\n";
+            // 
+
+            //std::cout << "!! removing price level\n";
             price_level_iter = levels->erase(price_level_iter);
+
+            // TODO: new bbo
             break;
           }
         } else {
-          std::cout << "filling some order " << order_iter->quantity << " to " << tmp << '\n';
+          //std::cout << "filling some order " << order_iter->quantity << " to " << tmp << '\n';
           order_iter->quantity = std::abs(tmp);
           remainder = std::min<quantity_t>(tmp, 0);
         }
@@ -245,47 +252,9 @@ private:
 
   }
 
-  /*
-  void do_sell(const tick& t) {
-    quantity_type remainder = t.quantity;
-
-    bool cross_spread = t.price <= best_bid;
-    std::cout << t.price << " sell " << best_bid << " crossed " << cross_spread << '\n';
-
-    if (cross_spread) {
-      std::cout << "crossing spread\n";
-      do_cross_spread(&bid_levels, remainder);
-    }
-
-    if (remainder == 0) return;
-    if (t.price < best_offer) best_offer = t.price;
-    // order will rest on book
-    auto entry = OrderEntry {
-      .price = remainder
-    };
-
-    ///order_map[oid] = entry;
-
-    price_level pl{.price=t.price};
-    auto it = std::lower_bound(ask_levels.begin(), ask_levels.end(), pl,
-        [](auto& a, auto& b) {
-          return a.price < b.price;
-        });
-
-    const auto o = order{.seq_num=t.seq_num, .quantity=t.quantity};
+  void remove_order(orderid_t& oid ) {
     
-    if (it == ask_levels.end() || it->price != t.price) {
-      std::cout << "adding new!\n";
-      // add new
-      pl.orders = { o };
-      ask_levels.insert(it, pl);
-    } else if (it->price == t.price) {
-      std::cout << "adding existing!\n";
-      // add to existing level
-      it->orders.push_back(o);
-    }
-  }*/
-
+  }
 
 
   // best seller is offering
@@ -304,7 +273,7 @@ private:
   Book bid_levels{};
   Book ask_levels{};
 
-  //std::unordered_map<OrderID, OrderMeta> order_map{};
+  std::unordered_map<orderid_t, OrderEntry> order_map{};
 };
 
 

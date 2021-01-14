@@ -6,6 +6,8 @@
 #define Q agr::message_type::quote
 #define B agr::Side::Buy
 #define S agr::Side::Sell
+#define L agr::OrderType::Limit
+#define M agr::OrderType::Market
 
 // submitted order get filled
 // order on book gets partial
@@ -13,15 +15,15 @@ TEST(orderbook, partial_book_fill) {
   agr::vec_orderbook ob{};
 
   std::cout << ob.to_string() << '\n';
-  agr::Order s0{.oid = 1, .price = 102, .quantity = 100, .side=S};
-  agr::Order s1{.oid = 2, .price = 101, .quantity = 50,  .side=S};
-  agr::Order s2{.oid = 3, .price = 100, .quantity = 3,   .side=S};
-  agr::Order s3{.oid = 4, .price = 100, .quantity = 1,   .side=S};
+  agr::Order s0{.oid = 1, .price = 102, .quantity = 100, .side=S, .type=L};
+  agr::Order s1{.oid = 2, .price = 101, .quantity = 50,  .side=S, .type=L};
+  agr::Order s2{.oid = 3, .price = 100, .quantity = 3,   .side=S, .type=L};
+  agr::Order s3{.oid = 4, .price = 100, .quantity = 1,   .side=S, .type=L};
 
-  agr::Order b0{.oid = 5, .price =  99, .quantity = 1,   .side=B};
-  agr::Order b1{.oid = 6, .price =  98, .quantity = 5,   .side=B};
-  agr::Order b2{.oid = 7, .price =  97, .quantity = 2,   .side=B};
-  agr::Order b3{.oid = 8, .price =  97, .quantity = 10,  .side=B};
+  agr::Order b0{.oid = 5, .price =  99, .quantity = 1,   .side=B, .type=L};
+  agr::Order b1{.oid = 6, .price =  98, .quantity = 5,   .side=B, .type=L};
+  agr::Order b2{.oid = 7, .price =  97, .quantity = 2,   .side=B, .type=L};
+  agr::Order b3{.oid = 8, .price =  97, .quantity = 10,  .side=B, .type=L};
 
   ob.submit_order(s0);
   ob.submit_order(s1);
@@ -35,13 +37,12 @@ TEST(orderbook, partial_book_fill) {
 
   std::cout << ob.to_string() << '\n';
 
-  /*
   //////
   // submitted order get filled
   // order on book gets partial
-  agr::tick t0{.seq_num=9, .message = Q, .price = 100, .quantity = 1, .side=B};
+  agr::Order t0{.oid=9, .price = 100, .quantity = 1, .side=B, .type=L};
 
-  ob.add_tick(t0);
+  ob.submit_order(t0);
 
   std::cout << ob.to_string() << '\n';
   auto it = ob.asks_begin();
@@ -49,11 +50,12 @@ TEST(orderbook, partial_book_fill) {
   // check best asks
   EXPECT_EQ(it->price, 100);
   EXPECT_EQ(it->orders.size(), 2);
-  EXPECT_EQ(it->orders[0].seq_num, 3);
+  EXPECT_EQ(it->orders[0].order_id, 3);
   EXPECT_EQ(it->orders[0].quantity, 2); // 3 -> 2
-  EXPECT_EQ(it->orders[1].seq_num, 4);  // same
+  EXPECT_EQ(it->orders[1].order_id, 4);  // same
   EXPECT_EQ(it->orders[1].quantity, 1);
 
+  /*
   //////
   // submitted order get filled
   // order on book gets filled
