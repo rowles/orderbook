@@ -8,9 +8,9 @@
 
 namespace agr {
 
-using orderid_t = std::uint64_t;//char[50];
-using quantity_t = std::uint64_t;
-using price_t = std::uint64_t;
+using orderid_t = std::int64_t;//char[50];
+using quantity_t = std::int64_t;
+using price_t = std::int64_t;
 
 enum class side_type { buy, sell };
 
@@ -84,7 +84,7 @@ struct Order {
 struct OrderEntry {
   // ptr to price
   price_t price;
-  Side book_size;
+  Side book_side;
 };
 
 //
@@ -104,8 +104,8 @@ public:
     handle_order(o);
   }
 
-  void cancel_order(const orderid_t& oid) {
-  }
+  //void cancel_order(const orderid_t& oid) {
+  //}
 
   const_iterator bids_begin() const {
     return bid_levels.cbegin();
@@ -155,20 +155,27 @@ public:
 private:
 
   // add order to the book
-  template <typename C>
-  void rest_on_book(const Order& o, quantity_t& remainder, C comp) {
-    PriceLevel pl{.price=o.price};
+  void rest_on_book(const Order& o, quantity_t& remainder) {
+    PriceLevel pl{.price=o.price,.orders={}};
     auto entry = OrderEntry {
-      .price = remainder
+      .price = o.price,
+      .book_side = o.side
     };
 
     order_map[o.oid] = entry;
+    const auto bo = BookOrder{.order_id=o.oid, .quantity=remainder};
  
-    auto levels = o.side == Side::Buy ? &bid_levels : &ask_levels;
-    auto it = std::lower_bound(levels->begin(), levels->end(), pl, comp);
+    Book* levels{nullptr};
+    Book::iterator it{nullptr};
 
-    const auto bo = BookOrder{.order_id=o.oid, .quantity=o.quantity};
-
+    if (o.side == Side::Buy) {
+      levels = &bid_levels;
+      it = std::lower_bound(levels->begin(), levels->end(), pl, std::greater<PriceLevel>());
+    } else {
+      levels = &ask_levels;
+      it = std::lower_bound(levels->begin(), levels->end(), pl, std::less<PriceLevel>());
+    }
+    
     if (it == levels->end() || it->price != o.price) {
       // adding a new price level
       pl.orders = { bo };
@@ -185,9 +192,8 @@ private:
     bool cross_spread = o.type == OrderType::Market ||
       (o.side == Side::Sell && o.price <= best_bid)
       || (o.side == Side::Buy && o.price >= best_offer);
-    ///std::cout << t.price << " buy " << best_offer << " crossed " << cross_spread << '\n';
+    
     if (cross_spread) {
-      std::cout << "crossing spread\n";
       do_cross_spread(o.side, remainder);
     }
 
@@ -196,11 +202,8 @@ private:
     if (o.side == Side::Sell && o.price < best_offer) best_offer = o.price;
     else if (o.side == Side::Buy && o.price > best_bid) best_bid = o.price;
 
-    // check resting eligiblity
-    if (o.side == Side::Sell)
-      rest_on_book(o, remainder, std::less<PriceLevel>());
-    else
-      rest_on_book(o, remainder, std::greater<PriceLevel>());
+    rest_on_book(o, remainder);
+    return 0;
   }
 
   // cross the spread for a side
@@ -240,15 +243,10 @@ private:
     }
   }
 
-  void remove_order(orderid_t& oid ) {
-    
-  }
-
-
   // best seller is offering
-  price_t best_bid{std::numeric_limits<std::uint64_t>::min()};
+  price_t best_bid{std::numeric_limits<std::int64_t>::min()};
   // best buyer is offering
-  price_t best_offer{std::numeric_limits<std::uint64_t>::max()};
+  price_t best_offer{std::numeric_limits<std::int64_t>::max()};
   
   // price_level
   //   price

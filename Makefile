@@ -1,6 +1,7 @@
 
 CXX = g++
 CXXFLAGS = -std=c++2a -Wall
+CXXFLAGS = -Wall -Werror -Wfatal-errors -Wpedantic -Wextra -Wmissing-include-dirs -Wconversion -Wsign-conversion -std=c++2a
 INCS = -I./src
 
 SRC = $(wildcard src/*.cpp)
