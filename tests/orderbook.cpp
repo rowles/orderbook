@@ -1,4 +1,5 @@
 #include <limits.h>
+#include <chrono>
 #include "gtest/gtest.h"
 #include "orderbook.h"
 //#include "tick.h"
@@ -72,8 +73,13 @@ TEST(orderbook, partial_book_fill) {
   // submitted order get filled
   // price level filled
   agr::Order t2{.oid=11, .price = 100, .quantity = 1, .side=B, .type=L};
-
+  
+  auto start = std::chrono::high_resolution_clock::now();
   ob.submit_order(t2);
+  auto elapsed = std::chrono::high_resolution_clock::now() - start;
+  long long microseconds = std::chrono::duration_cast<std::chrono::nanoseconds>(elapsed).count();
+  std::cout << "matched in: " << microseconds << '\n';
+  
   it = ob.asks_begin();
   std::cout << ob.to_string() << '\n';
 
@@ -88,7 +94,12 @@ TEST(orderbook, partial_book_fill) {
   // whole book side filled
   agr::Order t3{.oid=12, .price = 100, .quantity = 150, .side=B, .type=M};
 
+  start = std::chrono::high_resolution_clock::now();
   ob.submit_order(t3);
+  elapsed = std::chrono::high_resolution_clock::now() - start;
+  microseconds = std::chrono::duration_cast<std::chrono::nanoseconds>(elapsed).count();
+  std::cout << "matched in: " << microseconds << '\n';
+
   it = ob.asks_begin();
   std::cout << ob.to_string() << '\n';
   
