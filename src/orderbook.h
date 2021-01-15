@@ -92,9 +92,10 @@ struct OrderEntry {
 //  - limit
 //  - market
 //  - ioc
+//  - cancel
 //
 // Todo:
-//  - cancel
+//  - modify
 class vec_orderbook {
 public:
   using Book = std::vector<PriceLevel>;
@@ -104,8 +105,34 @@ public:
     handle_order(o);
   }
 
-  //void cancel_order(const orderid_t& oid) {
-  //}
+  bool cancel_order(const orderid_t& oid) noexcept {
+    auto it = order_map.find(oid);
+
+    if (it == order_map.end()) return false;
+
+    Book* levels{nullptr};
+    if (it->second.book_side == Side::Buy) {
+      levels = &bid_levels;
+    } else {
+      levels = &ask_levels;
+    }
+
+    // linear search for price level
+    auto pl_it = std::find_if(levels->begin(), levels->end(), [&it](const auto& a) {
+        return a.price == it->second.price;
+        });
+
+    if (pl_it == levels->end()) return false;
+
+    // linear search orders within price level
+    auto order_it = std::find_if(pl_it->orders.begin(), pl_it->orders.end(), [&oid](const auto& a) {
+        return a.order_id == oid;
+        });
+
+    pl_it->orders.erase(order_it);
+    order_map.erase(it);
+    return true;
+  }
 
   const_iterator bids_begin() const {
     return bid_levels.cbegin();
@@ -155,7 +182,7 @@ public:
 private:
 
   // add order to the book
-  void rest_on_book(const Order& o, quantity_t& remainder) {
+  void rest_on_book(const Order& o, quantity_t& remainder) noexcept {
     PriceLevel pl{.price=o.price,.orders={}};
     auto entry = OrderEntry {
       .price = o.price,
@@ -186,7 +213,7 @@ private:
     }
   }
 
-  quantity_t handle_order(const Order& o) {
+  quantity_t handle_order(const Order& o) noexcept {
     auto remainder = o.quantity;
 
     bool cross_spread = o.type == OrderType::Market ||
@@ -207,7 +234,7 @@ private:
   }
 
   // cross the spread for a side
-  void do_cross_spread(Side side, quantity_t& remainder) {
+  void do_cross_spread(Side side, quantity_t& remainder) noexcept {
     auto levels = side == Side::Buy ? &ask_levels : &bid_levels;
     auto price_level_iter = levels->begin();
 
