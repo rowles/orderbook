@@ -8,7 +8,7 @@
 
 namespace agr {
 
-using orderid_t = std::int64_t;//char[50];
+using orderid_t = std::int64_t;
 using quantity_t = std::int64_t;
 using price_t = std::int64_t;
 
@@ -17,8 +17,8 @@ enum class side_type { buy, sell };
 struct BookOrder {
   orderid_t order_id;
   quantity_t quantity;
-  
-  std::string to_string() const {
+
+  inline std::string to_string() const {
     std::stringstream ss{};
 
     ss << "[oid:" << order_id << ", quantity:" << quantity << "]"; 
@@ -31,8 +31,10 @@ struct PriceLevel {
   price_t price;
   std::vector<BookOrder> orders;
 
-  std::string to_string() const {
+  inline std::string to_string() const {
     std::stringstream ss{};
+
+    ss << price << " -> ";
 
     for (const auto& o : orders) {
       ss << o.to_string() << ", ";
@@ -41,26 +43,10 @@ struct PriceLevel {
     return ss.str();
   }
 
-  //inline bool operator< (const PriceLevel& lhs, const PriceLevel& rhs){ return lhs.price < rhs.price; }
-  /*inline bool operator> (const PriceLevel& lhs, const PriceLevel& rhs){ return cmp(lhs,rhs) >  0; }
-  bool Foo::operator==(const Foo& other) {
-  return bar == other.bar;
-}
-
-// Implementation 1
-bool Foo::operator!=(const Foo& other) {
-  return bar != other.bar
-}
-
-// Implementation 2
-bool Foo::operator!=(const Foo& other) {
-  return !(*this == other);
-}*/
 };
 
 inline bool operator< (const PriceLevel& lhs, const PriceLevel& rhs){ return lhs.price < rhs.price; }
 inline bool operator> (const PriceLevel& lhs, const PriceLevel& rhs){ return lhs.price > rhs.price; }
-// TODO: cancel, modify, market
 
 enum class Side {
   Buy,
@@ -82,18 +68,19 @@ struct Order {
 };
 
 struct OrderEntry {
-  // ptr to price
   price_t price;
   Side book_side;
 };
 
+// Limit Orderbook
+// Each price level is represented within a sorted vector.
 //
 // Supports:
-//  - limit
-//  - market
-//  - ioc
-//  - cancel
-//  - modify
+//  - limit orders
+//  - market orders
+//  - ioc orders
+//  - cancellations
+//  - modifications
 //
 // Todo:
 //  - 
@@ -102,6 +89,10 @@ public:
   using Book = std::vector<PriceLevel>;
   using const_iterator = Book::const_iterator;
 
+  vec_orderbook() = default;
+  vec_orderbook(const vec_orderbook&) = default;
+  ~vec_orderbook() = default;
+
   void submit_order(const Order& o) {
     handle_order(o);
   }
@@ -109,7 +100,7 @@ public:
   // Cancel an order resting on the book
   //
   // Returns true if successful
-  bool cancel_order(const orderid_t& oid) noexcept {
+  bool cancel_order(const orderid_t& oid) {
     auto it = order_map.find(oid);
 
     if (it == order_map.end()) return false;
@@ -182,30 +173,29 @@ public:
     return ask_levels.cend();
   }
 
+  // Best bid or zero if empty side
   price_t get_best_bid() const noexcept {
-    return best_bid;
+    return bid_levels.size() != 0 ? best_bid : 0;
   }
+
+  // Best ask or zero if empty side
   price_t get_best_offer() const noexcept {
-    return best_offer;
+    return ask_levels.size() != 0 ? best_offer : 0;
   }
 
   // debug print book as string
-  std::string to_string() const noexcept {
+  std::string to_string() const {
     std::stringstream ss{};
     
     ss << "------\n";
-    ss << " bb:" << best_bid << " bo:" << best_offer << '\n'; 
-
     ss << " Ask Book (Sell): bo " << best_offer << '\n';
     for (const auto& pl : ask_levels) {
-      auto price = pl.price;
-      ss << "  " << price << " -> " << pl.to_string() << "\n";
+      ss << pl.to_string() << "\n";
     }
 
     ss << " Bid Book (Buy): bb " << best_bid << '\n';
     for (const auto& pl : bid_levels) {
-      auto price = pl.price;
-      ss << "  " << price << " -> " << pl.to_string() << "\n";
+      ss << pl.to_string() << "\n";
     }
 
     return ss.str();
@@ -215,7 +205,7 @@ private:
   // Handle matching and resting of incoming order
   //
   // Returns remaining size if not resting eligible
-  quantity_t handle_order(const Order& o) noexcept {
+  quantity_t handle_order(const Order& o) {
     auto remainder = o.quantity;
 
     bool cross_spread = o.type == OrderType::Market ||
@@ -238,7 +228,7 @@ private:
   // Add order to rest on the book
   //
   // Adds to existing or new price level
-  void rest_on_book(const Order& o, quantity_t& remainder) noexcept {
+  void rest_on_book(const Order& o, quantity_t& remainder) {
     PriceLevel pl{.price=o.price,.orders={}};
     auto entry = OrderEntry {
       .price = o.price,
@@ -274,7 +264,7 @@ private:
   // Look for match resting on the book
   //
   // remainder reference will hold unfilled amount
-  void do_cross_spread(Side side, quantity_t& remainder) noexcept {
+  void do_cross_spread(Side side, quantity_t& remainder) {
     auto levels = side == Side::Buy ? &ask_levels : &bid_levels;
     auto price_level_iter = levels->begin();
 
@@ -286,7 +276,7 @@ private:
 
         if (tmp >= 0) {
           // filled resting order
-          // TODO: remove metadata
+          order_map.erase(order_iter->order_id);
           order_iter = price_level_iter->orders.erase(order_iter);
           remainder = tmp;
           
