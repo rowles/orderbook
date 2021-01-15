@@ -105,17 +105,16 @@ public:
     handle_order(o);
   }
 
+  // Cancel an order resting on the book
+  //
+  // Returns true if successful
   bool cancel_order(const orderid_t& oid) noexcept {
     auto it = order_map.find(oid);
 
     if (it == order_map.end()) return false;
 
-    Book* levels{nullptr};
-    if (it->second.book_side == Side::Buy) {
-      levels = &bid_levels;
-    } else {
-      levels = &ask_levels;
-    }
+    Book* levels = (it->second.book_side == Side::Buy) 
+      ? &bid_levels : &ask_levels;
 
     // linear search for price level
     auto pl_it = std::find_if(levels->begin(), levels->end(), [&it](const auto& a) {
@@ -133,6 +132,38 @@ public:
     order_map.erase(it);
     return true;
   }
+
+  // Modify an order resting on the book
+  //
+  // Only supports changes in size
+  // Order maintains spot in queue
+  //
+  // Returns true if successful
+  bool modify_order(const orderid_t& oid, const quantity_t new_size) {
+    auto it = order_map.find(oid);
+
+    if (it == order_map.end()) return false;
+
+    Book* levels = (it->second.book_side == Side::Buy) 
+      ? &bid_levels : &ask_levels;
+
+    // linear search for price level
+    auto pl_it = std::find_if(levels->begin(), levels->end(), [&it](const auto& a) {
+        return a.price == it->second.price;
+        });
+
+    if (pl_it == levels->end()) return false;
+    
+    // linear search orders within price level
+    auto order_it = std::find_if(pl_it->orders.begin(), pl_it->orders.end(), [&oid](const auto& a) {
+        return a.order_id == oid;
+        });
+
+    order_it->quantity = new_size;
+    return true;
+  }
+
+  
 
   const_iterator bids_begin() const {
     return bid_levels.cbegin();
