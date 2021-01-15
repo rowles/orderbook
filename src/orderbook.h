@@ -93,9 +93,10 @@ struct OrderEntry {
 //  - market
 //  - ioc
 //  - cancel
+//  - modify
 //
 // Todo:
-//  - modify
+//  - 
 class vec_orderbook {
 public:
   using Book = std::vector<PriceLevel>;
@@ -211,8 +212,32 @@ public:
   }
 
 private:
+  // Handle matching and resting of incoming order
+  //
+  // Returns remaining size if not resting eligible
+  quantity_t handle_order(const Order& o) noexcept {
+    auto remainder = o.quantity;
 
-  // add order to the book
+    bool cross_spread = o.type == OrderType::Market ||
+      (o.side == Side::Sell && o.price <= best_bid)
+      || (o.side == Side::Buy && o.price >= best_offer);
+    
+    if (cross_spread) {
+      do_cross_spread(o.side, remainder);
+    }
+
+    bool is_resting_eligible = (remainder > 0 && o.type == OrderType::Limit);
+    if (!is_resting_eligible) return remainder;
+    if (o.side == Side::Sell && o.price < best_offer) best_offer = o.price;
+    else if (o.side == Side::Buy && o.price > best_bid) best_bid = o.price;
+
+    rest_on_book(o, remainder);
+    return 0;
+  }
+
+  // Add order to rest on the book
+  //
+  // Adds to existing or new price level
   void rest_on_book(const Order& o, quantity_t& remainder) noexcept {
     PriceLevel pl{.price=o.price,.orders={}};
     auto entry = OrderEntry {
@@ -244,27 +269,11 @@ private:
     }
   }
 
-  quantity_t handle_order(const Order& o) noexcept {
-    auto remainder = o.quantity;
-
-    bool cross_spread = o.type == OrderType::Market ||
-      (o.side == Side::Sell && o.price <= best_bid)
-      || (o.side == Side::Buy && o.price >= best_offer);
-    
-    if (cross_spread) {
-      do_cross_spread(o.side, remainder);
-    }
-
-    bool is_resting_eligible = (remainder > 0 && o.type == OrderType::Limit);
-    if (!is_resting_eligible) return remainder;
-    if (o.side == Side::Sell && o.price < best_offer) best_offer = o.price;
-    else if (o.side == Side::Buy && o.price > best_bid) best_bid = o.price;
-
-    rest_on_book(o, remainder);
-    return 0;
-  }
-
-  // cross the spread for a side
+  // Cross the spread for a side
+  //
+  // Look for match resting on the book
+  //
+  // remainder reference will hold unfilled amount
   void do_cross_spread(Side side, quantity_t& remainder) noexcept {
     auto levels = side == Side::Buy ? &ask_levels : &bid_levels;
     auto price_level_iter = levels->begin();
@@ -276,7 +285,7 @@ private:
         int64_t tmp = remainder - order_iter->quantity;
 
         if (tmp >= 0) {
-          // filled order on book!
+          // filled resting order
           // TODO: remove metadata
           order_iter = price_level_iter->orders.erase(order_iter);
           remainder = tmp;
@@ -286,7 +295,7 @@ private:
             break;
           }
         } else {
-          // partial fill
+          // partial fill of resting order
           order_iter->quantity = std::abs(tmp);
           remainder = std::min<quantity_t>(tmp, 0);
           ++price_level_iter;
@@ -301,22 +310,15 @@ private:
     }
   }
 
-  // best seller is offering
-  price_t best_bid{std::numeric_limits<std::int64_t>::min()};
-  // best buyer is offering
-  price_t best_offer{std::numeric_limits<std::int64_t>::max()};
+  // best price seller is offering
+  price_t best_bid{std::numeric_limits<price_t>::min()};
+  // best price buyer is offering
+  price_t best_offer{std::numeric_limits<price_t>::max()};
   
-  // price_level
-  //   price
-  //   orders: vec
-  //
-  // order
-  //   seq_num
-  //   quantity
-  //
   Book bid_levels{};
   Book ask_levels{};
 
+  // container for faster order id lookup
   std::unordered_map<orderid_t, OrderEntry> order_map{};
 };
 
