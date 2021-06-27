@@ -1,20 +1,18 @@
 #pragma once
 
-#include <map>
+#include <unordered_map>
 #include <sstream>
 #include <vector>
 #include <functional>
 
 
-namespace agr {
+namespace orderbook {
 
 using orderid_t = std::int64_t;
 using quantity_t = std::int64_t;
 using price_t = std::int64_t;
 
-enum class side_type { buy, sell };
-
-struct BookOrder {
+struct RestingOrder {
   orderid_t order_id;
   quantity_t quantity;
 
@@ -29,7 +27,7 @@ struct BookOrder {
 
 struct PriceLevel {
   price_t price;
-  std::vector<BookOrder> orders;
+  std::vector<RestingOrder> orders;
 
   inline std::string to_string() const {
     std::stringstream ss{};
@@ -42,7 +40,6 @@ struct PriceLevel {
 
     return ss.str();
   }
-
 };
 
 inline bool operator< (const PriceLevel& lhs, const PriceLevel& rhs){ return lhs.price < rhs.price; }
@@ -55,11 +52,11 @@ enum class Side {
 
 enum class OrderType {
   Market,
-  Limit,  // GTC
+  Limit,
   IOC
 };
 
-struct Order {
+struct ClientOrder {
   orderid_t oid;
   price_t price;
   quantity_t quantity;
@@ -72,6 +69,9 @@ struct OrderEntry {
   Side book_side;
 };
 
+static_assert(std::is_trivially_copyable<RestingOrder>::value);
+static_assert(std::is_trivially_copyable<OrderEntry>::value);
+
 // Limit Orderbook
 // Each price level is represented within a sorted vector.
 //
@@ -82,25 +82,71 @@ struct OrderEntry {
 //  - cancellations
 //  - modifications
 //
-// Todo:
-//  - 
-class vec_orderbook {
+class OrderBook {
 public:
   using Book = std::vector<PriceLevel>;
   using const_iterator = Book::const_iterator;
 
-  vec_orderbook() = default;
-  vec_orderbook(const vec_orderbook&) = default;
-  ~vec_orderbook() = default;
+  struct LevelIterator {
+    LevelIterator(const Book* _book) : book(_book) {}
+    const_iterator begin() const {
+      return book->cbegin();
+    }
+    const_iterator end() const {
+      return book->cend();
+    }
+  private:
+    const Book* book{nullptr};
+  };
 
-  void submit_order(const Order& o) {
-    handle_order(o);
+  OrderBook() = default;
+  OrderBook(const OrderBook&) = default;
+  ~OrderBook() = default;
+  
+  // provide const iterator of bids
+  inline LevelIterator bids_iter() const {
+    return LevelIterator{&bid_levels};
   }
 
+  // provide const iterator of asks
+  inline LevelIterator asks_iter() const {
+    return LevelIterator{&ask_levels};
+  }
+  // Handle new client order
+  //
+  // Returns unfilled quantity
+  inline quantity_t submit_order(const ClientOrder& o) noexcept {
+    auto remainder = o.quantity;
+
+    const bool trigger_match = o.type == OrderType::Market ||
+      (o.side == Side::Sell && o.price <= best_bid)
+      || (o.side == Side::Buy && o.price >= best_offer);
+
+    if (trigger_match) {
+      price_t max_price{};
+
+      if (o.type == OrderType::Market)
+        max_price = (o.side == Side::Buy) ? std::numeric_limits<price_t>::max() : std::numeric_limits<price_t>::min();
+      else
+        max_price = o.price;
+
+      match_orders(o.side, remainder, max_price);
+    }
+
+    const bool is_resting_eligible = (remainder > 0 && o.type == OrderType::Limit);
+    if (!is_resting_eligible) return remainder;
+    if (o.side == Side::Sell && o.price < best_offer) best_offer = o.price;
+    else if (o.side == Side::Buy && o.price > best_bid) best_bid = o.price;
+    
+    rest_on_book(o, remainder);
+
+    return remainder;
+  }
+  
   // Cancel an order resting on the book
   //
   // Returns true if successful
-  bool cancel_order(const orderid_t& oid) {
+  inline bool cancel_order(const orderid_t& oid) {
     auto it = order_map.find(oid);
 
     if (it == order_map.end()) return false;
@@ -155,31 +201,13 @@ public:
     return true;
   }
 
-  
-
-  const_iterator bids_begin() const {
-    return bid_levels.cbegin();
-  }
-
-  const_iterator bids_end() const {
-    return bid_levels.cend();
-  }
-
-  const_iterator asks_begin() const {
-    return ask_levels.cbegin();
-  }
-
-  const_iterator asks_end() const {
-    return ask_levels.cend();
-  }
-
   // Best bid or zero if empty side
-  price_t get_best_bid() const noexcept {
+  inline price_t get_best_bid() const noexcept {
     return bid_levels.size() != 0 ? best_bid : 0;
   }
 
   // Best ask or zero if empty side
-  price_t get_best_offer() const noexcept {
+  inline price_t get_best_offer() const noexcept {
     return ask_levels.size() != 0 ? best_offer : 0;
   }
 
@@ -189,8 +217,9 @@ public:
     
     ss << "------\n";
     ss << " Ask Book (Sell): bo " << best_offer << '\n';
-    for (const auto& pl : ask_levels) {
-      ss << pl.to_string() << "\n";
+    //for (const auto& pl : ask_levels) {
+    for (auto pl = ask_levels.rbegin(); pl != ask_levels.rend(); ++pl) {
+      ss << pl->to_string() << "\n";
     }
 
     ss << " Bid Book (Buy): bb " << best_bid << '\n';
@@ -202,41 +231,18 @@ public:
   }
 
 private:
-  // Handle matching and resting of incoming order
-  //
-  // Returns remaining size if not resting eligible
-  quantity_t handle_order(const Order& o) {
-    auto remainder = o.quantity;
-
-    bool cross_spread = o.type == OrderType::Market ||
-      (o.side == Side::Sell && o.price <= best_bid)
-      || (o.side == Side::Buy && o.price >= best_offer);
-    
-    if (cross_spread) {
-      do_cross_spread(o.side, remainder);
-    }
-
-    bool is_resting_eligible = (remainder > 0 && o.type == OrderType::Limit);
-    if (!is_resting_eligible) return remainder;
-    if (o.side == Side::Sell && o.price < best_offer) best_offer = o.price;
-    else if (o.side == Side::Buy && o.price > best_bid) best_bid = o.price;
-
-    rest_on_book(o, remainder);
-    return 0;
-  }
-
   // Add order to rest on the book
   //
   // Adds to existing or new price level
-  void rest_on_book(const Order& o, quantity_t& remainder) {
+  inline void rest_on_book(const ClientOrder& o, quantity_t& remainder) noexcept {
     PriceLevel pl{.price=o.price,.orders={}};
-    auto entry = OrderEntry {
+    const auto entry = OrderEntry {
       .price = o.price,
       .book_side = o.side
     };
 
     order_map[o.oid] = entry;
-    const auto bo = BookOrder{.order_id=o.oid, .quantity=remainder};
+    const RestingOrder bo {.order_id=o.oid, .quantity=remainder};
  
     Book* levels{nullptr};
     Book::iterator it{nullptr};
@@ -253,9 +259,11 @@ private:
       // adding a new price level
       pl.orders = { bo };
       levels->insert(it, pl);
+      remainder = 0;
     } else if (it->price == o.price) {
       // add order to existing price level
       it->orders.push_back(bo);
+      remainder = 0;
     }
   }
 
@@ -264,14 +272,23 @@ private:
   // Look for match resting on the book
   //
   // remainder reference will hold unfilled amount
-  void do_cross_spread(Side side, quantity_t& remainder) {
-    auto levels = side == Side::Buy ? &ask_levels : &bid_levels;
+  inline void match_orders(const Side& side, quantity_t& remainder, const price_t max_price) noexcept {
+    const auto levels = side == Side::Buy ? &ask_levels : &bid_levels;
     auto price_level_iter = levels->begin();
 
-    while (levels->size() > 0 && remainder > 0) {
+    bool done_match{false};
+
+    // iterate price levels
+    while (levels->size() > 0 && remainder > 0 && !done_match) {
       auto order_iter = price_level_iter->orders.begin();
 
+      // iterate orders at level
       do {
+        if ((side == Side::Sell && price_level_iter->price < max_price) || (side == Side::Buy && price_level_iter->price > max_price)) {
+          done_match = true;
+          break;
+        }
+
         int64_t tmp = remainder - order_iter->quantity;
 
         if (tmp >= 0) {
@@ -287,7 +304,8 @@ private:
         } else {
           // partial fill of resting order
           order_iter->quantity = std::abs(tmp);
-          remainder = std::min<quantity_t>(tmp, 0);
+          remainder = std::max<quantity_t>(tmp, 0);
+
           ++price_level_iter;
         }
       } while (order_iter != price_level_iter->orders.end() && remainder > 0);
@@ -311,10 +329,5 @@ private:
   // container for faster order id lookup
   std::unordered_map<orderid_t, OrderEntry> order_map{};
 };
-
-
-
-
-
 
 } // namespace agr
